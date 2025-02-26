@@ -9,12 +9,6 @@ on:
 
 env:
   AWS_REGION: "ap-south-1"
-  ECR_REPOSITORY: "angular-demo-app"
-  ECS_CLUSTER: "angular-demo-cluster"
-  ECS_SERVICE: "angular-demo-cluster-service"
-  TASK_DEFINITION: "task-definition.json"
-  DEPLOYMENT_GROUP: "angular-demo-deployment-group"
-  CODEDEPLOY_APP: "angular-demo-app"
 
 jobs:
   deploy:
@@ -33,26 +27,26 @@ jobs:
 
     - name: Login to Amazon ECR
       run: |
-        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin <AWS_ACCOUNT_ID>.dkr.ecr.$AWS_REGION.amazonaws.com
+        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com
 
     - name: Build and Push Docker Image
       run: |
         IMAGE_TAG=$(date +%s)
-        docker build -t $ECR_REPOSITORY:$IMAGE_TAG .
-        docker tag $ECR_REPOSITORY:$IMAGE_TAG <AWS_ACCOUNT_ID>.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
-        docker push <AWS_ACCOUNT_ID>.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG
+        docker build -t ${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG .
+        docker tag ${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG
+        docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG
         echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
 
     - name: Update ECS Task Definition
       run: |
-        sed -i "s|<IMAGE>|<AWS_ACCOUNT_ID>.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPOSITORY:$IMAGE_TAG|g" $TASK_DEFINITION
-        aws ecs register-task-definition --cli-input-json file://$TASK_DEFINITION
+        sed -i "s|<IMAGE>|${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.$AWS_REGION.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:$IMAGE_TAG|g" ${{ secrets.TASK_DEFINITION }}
+        aws ecs register-task-definition --cli-input-json file://${{ secrets.TASK_DEFINITION }}
 
     - name: Deploy to ECS via CodeDeploy
       run: |
         REVISION=$(aws ecs describe-task-definition --task-definition MyECSApp --query "taskDefinition.revision" --output text)
         aws deploy create-deployment \
-          --application-name $CODEDEPLOY_APP \
-          --deployment-group-name $DEPLOYMENT_GROUP \
+          --application-name ${{ secrets.CODEDEPLOY_APP }} \
+          --deployment-group-name ${{ secrets.DEPLOYMENT_GROUP }} \
           --deployment-config-name CodeDeployDefault.ECSAllAtOnce \
           --revision revisionType=AppSpecContent,appSpecContent="{\"version\":\"0.0\",\"Resources\":[{\"TargetService\":{\"Type\":\"AWS::ECS::Service\",\"Properties\":{\"TaskDefinition\":\"MyECSApp:$REVISION\",\"LoadBalancerInfo\":{\"ContainerName\":\"MyECSContainer\",\"ContainerPort\":80}}}}]}"
